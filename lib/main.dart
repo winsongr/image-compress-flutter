@@ -22,7 +22,7 @@ class _MainAppState extends State<MainApp> {
   @override
   void initState() {
     super.initState();
-    fetchImages();
+    pickImages();
   }
 
   Future<void> pickImages() async {
@@ -30,20 +30,18 @@ class _MainAppState extends State<MainApp> {
       final pickedImages = await ImagePicker().pickMultiImage();
 
       if (pickedImages.isNotEmpty) {
-        List<Map<String, String>> tempImagePairs = [];
-
-        for (final pickedImage in pickedImages) {
+        final tempImagePairs = await Future.wait(pickedImages.map((pickedImage) async {
           final originalPath = pickedImage.path;
           final compressedPath = await compressImage(originalPath);
 
-          tempImagePairs.add({
+          return {
             'original': originalPath,
             'compressed': compressedPath,
-          });
-        }
+          };
+        }));
 
         setState(() {
-          imagePairs = tempImagePairs;
+          imagePairs = tempImagePairs.toList();
         });
       }
     } catch (e) {
@@ -52,28 +50,19 @@ class _MainAppState extends State<MainApp> {
   }
 
   Future<String> compressImage(String imagePath) async {
-    int quality = 85;
-    File? compressedImage;
     final dir = await getTemporaryDirectory();
-    String targetPath;
+    final targetPath =
+        path.join(dir.path, '${path.basenameWithoutExtension(imagePath)}_compressed.jpg');
 
-    do {
-      targetPath = path.join(
-          dir.path, '${path.basenameWithoutExtension(imagePath)}_compressed_$quality.jpg');
-      await FlutterImageCompress.compressAndGetFile(
-        imagePath,
-        targetPath,
-        quality: quality,
-      );
-      compressedImage = File(targetPath);
-      quality -= 5;
-    } while (compressedImage.lengthSync() / 1024 > 10 && quality > 10);
+    final originalSize = (await File(imagePath).length()) / 1024; // in KB
 
-    return compressedImage.path;
-  }
+    await FlutterImageCompress.compressAndGetFile(
+      imagePath,
+      targetPath,
+      quality: originalSize > 500 ? 10 : 80,
+    );
 
-  void fetchImages() {
-    pickImages();
+    return targetPath;
   }
 
   void openFullScreenImage(BuildContext context, String imagePath) {
